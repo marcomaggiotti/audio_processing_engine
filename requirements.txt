@@ -1,0 +1,5 @@
+pydub==0.25.1  # needs ffmpeg/ffprobe on PATH to decode and encode files
+numpy>=2.0
+scipy>=1.13  # pydub.scipy_effects: Butterworth band, equalizer, hum notches
+flask>=3.0  # the Blueprint (audio_processing_engine/blueprint.py)
+audioop-lts; python_version >= "3.13"  # pydub uses audioop, removed from the standard library in 3.13
