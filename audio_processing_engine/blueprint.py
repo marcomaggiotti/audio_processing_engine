@@ -19,8 +19,10 @@ Register it with `app.register_blueprint(audio_bp)` (url_prefix /audio), or use 
 
 from __future__ import annotations
 
+import hmac
 import io
 import json
+import os
 from dataclasses import asdict
 
 from flask import Blueprint, Flask, jsonify, request, send_file
@@ -208,11 +210,31 @@ def _bad_request(e):
     return jsonify({"error": e.description}), 400
 
 
-def create_app(max_upload_mb: int = 200) -> Flask:
+def create_app(max_upload_mb: int | None = None, api_token: str | None = None) -> Flask:
+    """The app serving audio_bp, with a /healthz liveness check.
+
+    `max_upload_mb` defaults to MAX_UPLOAD_MB (200). `api_token` defaults to API_TOKEN: when set, every /audio
+    request needs the header `X-API-Key: <token>`.
+    """
     app = Flask(__name__)
+    max_upload_mb = max_upload_mb or int(os.environ.get("MAX_UPLOAD_MB") or 200)
+    token = api_token if api_token is not None else os.environ.get("API_TOKEN", "")
     app.config["MAX_CONTENT_LENGTH"] = max_upload_mb * 1024 * 1024
+
+    @app.before_request
+    def require_token():
+        if token and request.blueprint == audio_bp.name and \
+                not hmac.compare_digest(request.headers.get("X-API-Key", ""), token):
+            return jsonify({"error": "Missing or wrong API key (header X-API-Key)"}), 401
+        return None
+
+    @app.errorhandler(413)
+    def too_large(_e):
+        return jsonify({"error": f"The upload is larger than {max_upload_mb} MB"}), 413
+
     app.register_blueprint(audio_bp)
 
+    @app.get("/healthz")
     @app.get("/health")
     def health():
         return {"status": "ok"}

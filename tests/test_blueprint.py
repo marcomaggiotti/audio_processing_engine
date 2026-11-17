@@ -10,7 +10,7 @@ from audio_processing_engine.blueprint import create_app
 
 @pytest.fixture
 def client():
-    return create_app().test_client()
+    return create_app(api_token="").test_client()
 
 
 def wav(ms=3000):
@@ -63,3 +63,18 @@ def test_errors(client):
     assert post(client, "cut", {"start": "0", "end": "1", "format": "aiff"}).status_code == 400
     assert post(client, "adjust", {"dehum_hz": "55"}).status_code == 400
     assert client.post("/audio/info").status_code == 400
+
+
+def test_api_token_required_when_set():
+    secured = create_app(api_token="s3cret").test_client()
+    assert secured.get("/healthz").status_code == 200
+    assert post(secured, "info").status_code == 401
+    form = {"file": (io.BytesIO(wav()), "a.wav")}
+    res = secured.post("/audio/info", data=form, content_type="multipart/form-data", headers={"X-API-Key": "s3cret"})
+    assert res.status_code == 200
+
+
+def test_upload_limit():
+    small = create_app(max_upload_mb=1, api_token="").test_client()
+    res = post(small, "info", audio=b"RIFF" + b"\0" * (2 * 1024 * 1024))
+    assert res.status_code == 413 and "1 MB" in res.json["error"]
